@@ -188,12 +188,13 @@ class cop():
 # ============================================
 n_agents = int(0.7*nation_dimension**2)  # Number of considerate agents
 n_cops = int(0.04*nation_dimension**2)  # Number of considerate cops
-tfin = 200  # Final time, i.e. number of time steps to consider
+tfin = 20  # Final time, i.e. number of time steps to consider
 agents = [agent(n, L, Jmax, p_class_1) for n in range(n_agents)]  # Generate the agents
 cops = [cop(n) for n in range(n_cops)]  # Generate the cops
 
 save = True            # Set to True if want to save the data
 interactive = True      # If true computes the html slider stuff
+show_plot = False
 
 # ============================================
 # Simulation computation
@@ -231,13 +232,13 @@ for t in trange(tfin):
         pos = cop.position
         positions[pos[0], pos[1]] = 6                   # Updates matrix data with cops position
     positions_data[t, :, :] = positions         # Stores the data of the positons
-
     im = plt.imshow(positions, cmap=mpl.colors.ListedColormap(color_name_list))
     values = [-1, 0, 1, 2, 3, 4, 5, 6]
     colors = [im.cmap(im.norm(value)) for value in values]
     patches = [mpatches.Patch(color=colors[i], label="Level {l}".format(l=values[i])) for i in range(len(values))]
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-    plt.show()
+    if show_plot:
+        plt.show()
     # Plots the positions matrix
     if save:
         plt.savefig(name_to_save + '_time_iter_nr' + str(t) + '.png')
@@ -248,6 +249,7 @@ for t in trange(tfin):
 
 
 if interactive:
+
     # Create figure
     fig = go.Figure()
     # Add traces, one for each slider step
@@ -262,6 +264,7 @@ if interactive:
     fig.data[0].visible = True
     # Create and add slider
     steps = []
+
     for i in range(len(fig.data)):
         step = dict(
             method="update",

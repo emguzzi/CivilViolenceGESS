@@ -7,21 +7,22 @@ from datetime import datetime
 import os
 import pandas as pd
 import matplotlib as mpl
+from tqdm import tqdm, trange
 # ============================================
 # Global variables for the model
 # ============================================
-nation_dimension = 100  # Will be a (nation_dimension,nation_dimension) matrix
+nation_dimension = 40  # Will be a (nation_dimension,nation_dimension) matrix
 p_class_1 = 0.6  # Probability for an agent to be in class 1
-vision_agent = 3  # Agent's vision
-vision_cop = 3  # Cop's vision
-L = 0.5  # Legitimacy, must be element of [0,1], see paper
-T = -10000  # Tres-hold of agent's activation
-Jmax = 3  # Maximal Jail time for type 0
-factor_Jmax1 = 1  # How many time is Jmax for type 1 bigger than for type 0
-k = 1  # Constant for P : estimated arrest probability
+vision_agent = 7  # Agent's vision
+vision_cop = 7  # Cop's vision
+L = 0.82  # Legitimacy, must be element of [0,1], see paper
+T = 0.1  # Tres-hold of agent's activation
+Jmax = 15  # Maximal Jail time for type 0
+factor_Jmax1 = 2  # How many time is Jmax for type 1 bigger than for type 0
+k = 2.3  # Constant for P : estimated arrest probability
 # locations_agents_dic = {}
 # locations_cops_dic = {}
-prob_arrest_class_1 = 0.9  # Probability, given an arrest is made, that the arrested agent is
+prob_arrest_class_1 = 0.7  # Probability, given an arrest is made, that the arrested agent is
 
 
 # of type 1
@@ -48,7 +49,7 @@ class agent():
 
     def move(self):
         # Moves the agent if the agent is not in jail
-        shift = np.random.randint(-self.vision_agent, self.vision_agent, (2))
+        shift = np.random.randint(-self.vision_agent, self.vision_agent+1, (2))
         if self.status == 2:  # Check for status
             shift = np.array([0, 0])
         self.position = self.position + shift  # Move
@@ -127,8 +128,8 @@ class cop():
         self.position = np.random.randint(0, nation_dimension, (2))  # Assigns randomly initial position
 
     def move(self):
-        # Moves the cop withing vision
-        shift = np.random.randint(-self.vision_cop, self.vision_cop, (2))
+        # Moves the cop within vision
+        shift = np.random.randint(-self.vision_cop, self.vision_cop+1, (2))
         self.position = self.position + shift
         self.position[0] = max(min(self.position[0], nation_dimension - 1), 0)  # Do not exit matrix
         self.position[1] = max(min(self.position[1], nation_dimension - 1), 0)  # Do not exit matrix
@@ -185,13 +186,13 @@ class cop():
 # ============================================
 # Simulation data --> Do the tuning here
 # ============================================
-n_agents = 10  # Number of considerate agents
-n_cops = 50  # Number of considerate cops
-tfin = 10  # Final time, i.e. number of time steps to consider
+n_agents = int(0.7*nation_dimension**2)  # Number of considerate agents
+n_cops = int(0.04*nation_dimension**2)  # Number of considerate cops
+tfin = 200  # Final time, i.e. number of time steps to consider
 agents = [agent(n, L, Jmax, p_class_1) for n in range(n_agents)]  # Generate the agents
 cops = [cop(n) for n in range(n_cops)]  # Generate the cops
 
-save = False            # Set to True if want to save the data
+save = True            # Set to True if want to save the data
 interactive = True      # If true computes the html slider stuff
 
 # ============================================
@@ -209,24 +210,30 @@ name_to_save = name_to_save + '/' + name_to_save
 
 positions_data = np.empty([tfin, nation_dimension, nation_dimension])  # Stores positional and type data
 
-for t in range(tfin):
-    # Does the t-th time interation
+color_name_list = ["white", "green", "red", "darkorange", "lime", "fuchsia", "goldenrod", "blue"]
+
+for t in trange(tfin):
+    # Does the t-th time iteration
     positions = np.zeros((nation_dimension, nation_dimension)) - 1  # Initialisation of the matrix
     # Values of positions are:
     # * -1: no one here
-    # * 0: quite agent here
-    # * 1: active agent here
-    # * 2: agent in jail here
-    # * 3: cop here
+    # * 0: quite agent type 0 here
+    # * 1: active agent type 0 here
+    # * 2: agent in jail type 0 here
+    # * 3: quite agent type 1 here
+    # * 4: active agent type 1 here
+    # * 5: agent in jail type 1 here
+    # * 6: cop here
     for agent in agents:
         pos = agent.position
-        positions[pos[0], pos[1]] = agent.status  # Updates matrix data with agents position and status
+        positions[pos[0], pos[1]] = agent.status + 3*agent.type  # Updates matrix data with agents position and status
     for cop in cops:
         pos = cop.position
-        positions[pos[0], pos[1]] = 3                   # Updates matrix data with cops position
+        positions[pos[0], pos[1]] = 6                   # Updates matrix data with cops position
     positions_data[t, :, :] = positions         # Stores the data of the positons
-    im = plt.imshow(positions, cmap= mpl.colors.ListedColormap(["white", "green", "red", "black", "blue"]))
-    values = [-1, 0, 1, 2, 3]
+
+    im = plt.imshow(positions, cmap=mpl.colors.ListedColormap(color_name_list))
+    values = [-1, 0, 1, 2, 3, 4, 5, 6]
     colors = [im.cmap(im.norm(value)) for value in values]
     patches = [mpatches.Patch(color=colors[i], label="Level {l}".format(l=values[i])) for i in range(len(values))]
     plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
@@ -249,7 +256,7 @@ if interactive:
         print(type(curent_pd.applymap(str)[0][0]))
         fig.add_trace(go.Heatmap(
                 z=curent_pd.applymap(str),
-            colorscale=["white", "green", "red", "black", "blue"])
+            colorscale=color_name_list)
         )
     # Make First trace visible
     fig.data[0].visible = True
@@ -275,3 +282,23 @@ if interactive:
     fig.show()
     if save:
         fig.write_html(name_to_save+'.html')
+
+if save:
+    lines = ['nation_dimension' + ': ' + str(nation_dimension),
+             'p_class_1' + ': ' + str(p_class_1),
+             'vision_agent' + ': ' + str(vision_agent),
+             'vision_cop' + ': ' + str(vision_cop),
+             'L' + ': ' + str(L),
+             'T' + ': ' + str(T),
+             'Jmax' + ': ' + str(Jmax),
+             'factor_Jmax1' + ': ' + str(factor_Jmax1),
+             'k' + ': ' + str(k),
+             'prob_arrest_class_1' + ': ' + str(prob_arrest_class_1),
+             'n_agents' + ': ' + str(n_agents),
+             'n_cops' + ': ' + str(n_cops),
+             'tfin' + ': ' + str(tfin)]
+
+    with open(name_to_save+'_par.txt','w') as file:
+        for line in lines:
+            file.write(line + '\n')
+        file.close()

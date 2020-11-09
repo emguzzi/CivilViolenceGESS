@@ -255,7 +255,6 @@ if interactive:
     # Add traces, one for each slider step
     for step in np.arange(0, tfin, 1):
         curent_pd = pd.DataFrame(positions_data[step, :, :])
-        print(type(curent_pd.applymap(str)[0][0]))
         fig.add_trace(go.Heatmap(
                 z=curent_pd.applymap(str),
             colorscale=color_name_list)

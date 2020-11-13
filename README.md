@@ -1,9 +1,13 @@
-# Agent-Based Modeling and Social System Simulation 2019 (Template)
-(text between brackets to be removed)
+# Agent-Based Modeling and Social System Simulation 2020
 
 > * Group Name: (be creative!)
-> * Group participants names: (alphabetically sorted by last name)
-> * Project Title: (can be changed later)
+> * Group participants names:
+> > * Barandun Silvio
+> > * Fritzsche Alice
+> > * Guzzi Emanuele
+> > * Schmid Nicolas
+> > * Wöhler Jakob 
+> * Project Title: Civil Violence & BLM protests
 
 ## General Introduction
 
@@ -29,16 +33,9 @@
 
 ## References 
 
-(Add the bibliographic references you intend to use)
-(Explain possible extension to the above models)
-(Code / Projects Reports of the previous year)
-
+> * Civil_Violence_Epstein2002.pdf
+> * [GitHub repo with an implementation of Epstein's model](https://github.com/projectmesa/mesa-examples/tree/master/examples/EpsteinCivilViolence)
 
 ## Research Methods
 
-(Cellular Automata, Agent-Based Model, Continuous Modeling...) (If you are not sure here: 1. Consult your colleagues, 2. ask the teachers, 3. remember that you can change it afterwards)
-
-
-## Other
-
-(mention datasets you are going to use)
+Goal is to implement an agent-based model based on the model of Epstein in the provided paper to simulate different scenarios.

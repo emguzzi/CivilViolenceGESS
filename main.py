@@ -11,6 +11,7 @@ from tqdm import tqdm, trange
 # ============================================
 # Global variables for the model
 # ============================================
+#type 1 --> discriminated
 nation_dimension = 40  # Will be a (nation_dimension,nation_dimension) matrix
 p_class_1 = 0.6  # Probability for an agent to be in class 1
 vision_agent = 7  # Agent's vision
@@ -23,7 +24,7 @@ k = 2.3  # Constant for P : estimated arrest probability
 # locations_agents_dic = {}
 # locations_cops_dic = {}
 prob_arrest_class_1 = 0.7  # Probability, given an arrest is made, that the arrested agent is
-
+D_const = [1,2]
 
 # of type 1
 
@@ -46,6 +47,7 @@ class agent():
         self.J = 0  # Remaining jail time, 0 if free
         self.P = 0  # Estimated arrest probability
         self.N = self.R * self.P * self.Jmax  # Agent's net risk
+        self.D = 0 #Percieved discrimination
 
     def move(self):
         # Moves the agent if the agent is not in jail
@@ -70,7 +72,7 @@ class agent():
             # Is arrested and assigned a Jail time, see paper
             self.status = 2
             self.J = np.random.randint(1, Jmax)
-        elif self.G - self.N > T:
+        elif self.G - (self.N-self.D) > T:
             # Get's active, see paper
             self.status = 1
         else:
@@ -91,6 +93,21 @@ class agent():
             # To avoid double counting but always count the agent self, see paper
             near_agents += 1
         return near_agents
+    def compute_arrested_ratio(self,agents,radius):
+        #compute the ratio type_1 arrested agents over total arrests
+        tot_arrested = 0
+        type_1_arrested = 0
+        for agent in agents:
+            pos = agent.position
+            if (np.linalg.norm(self.position - pos, ord=np.inf)<radius) and (agent.status == 2):
+                tot_arrested = tot_arrested + 1
+                if agent.type == 1:
+                    type_1_arrested = type_1_arrested + 1
+        if tot_arrested == 0:
+            ratio = 0.5
+        else:
+            ratio = type_1_arrested/tot_arrested
+        return ratio
 
     def near_cops(self, cops):
         # Counts cops within vision
@@ -112,11 +129,18 @@ class agent():
         # Update net risk, see paper
         self.N = self.R * self.P * self.Jmax
 
+    def updateD(self,agents):
+        #update the discrimination factor D
+        radius = 40 #set the radius smaller to let D more local, let it to 40 to keep D global
+        ratio = self.compute_arrested_ratio(agents,radius)
+        self.D = D_const[self.type]*abs(0.5-ratio)
+
     def time_step(self, agent, cops):
         # Comptes one time iteration for the given agent
         self.move()
         self.updateP(agent, cops)
         self.updateN()
+        self.updateD(agent)
         self.update_status(arrest=False)
         return self
 
@@ -188,7 +212,7 @@ class cop():
 # ============================================
 n_agents = int(0.7*nation_dimension**2)  # Number of considerate agents
 n_cops = int(0.04*nation_dimension**2)  # Number of considerate cops
-tfin = 20  # Final time, i.e. number of time steps to consider
+tfin = 200  # Final time, i.e. number of time steps to consider
 agents = [agent(n, L, Jmax, p_class_1) for n in range(n_agents)]  # Generate the agents
 cops = [cop(n) for n in range(n_cops)]  # Generate the cops
 
@@ -213,7 +237,22 @@ positions_data = np.empty([tfin, nation_dimension, nation_dimension])  # Stores 
 
 color_name_list = ["white", "green", "red", "darkorange", "lime", "fuchsia", "goldenrod", "blue"]
 
+time =range(tfin)
+D_list = [0]*len(range(tfin))
+arrested_list = [0]*len(range(tfin))
+type_1_arrested_list = [0]*len(range(tfin))
+type_0_arrested_list = [0]*len(range(tfin))
+active_list = [0]*len(range(tfin))
+type_1_active_list = [0]*len(range(tfin))
+type_0_active_list = [0]*len(range(tfin))
 for t in trange(tfin):
+    arrested = 0
+    type_1_arrested = 0
+    type_0_arrested = 0
+    active = 0
+    type_1_active = 0
+    type_0_active = 0
+    D = 0
     # Does the t-th time iteration
     positions = np.zeros((nation_dimension, nation_dimension)) - 1  # Initialisation of the matrix
     # Values of positions are:
@@ -228,6 +267,20 @@ for t in trange(tfin):
     for agent in agents:
         pos = agent.position
         positions[pos[0], pos[1]] = agent.status + 3*agent.type  # Updates matrix data with agents position and status
+        if agent.status == 2:
+            arrested = arrested+1
+            if agent.type == 1:
+                type_1_arrested = type_1_arrested + 1
+            else:
+                type_0_arrested = type_0_arrested + 1
+        elif agent.status ==1:
+            active = active +1
+            if agent.type == 1:
+                type_1_active =type_1_active+1
+            else:
+                type_0_active = type_0_active + 1
+
+    D = agent.D
     for cop in cops:
         pos = cop.position
         positions[pos[0], pos[1]] = 6                   # Updates matrix data with cops position
@@ -246,7 +299,13 @@ for t in trange(tfin):
     # Compute now one time steps for each cop and each agent
     cops = [cop.time_step(agents) for cop in cops]
     agents = [ag.time_step(agents, cops) for ag in agents]
-
+    D_list[t] = D
+    arrested_list[t] = arrested
+    type_1_arrested_list[t] = type_1_arrested
+    type_0_arrested_list[t] = type_0_arrested
+    active_list[t] = active
+    type_1_active_list[t] = type_1_active
+    type_0_active_list[t] = type_0_active
 
 if interactive:
 
@@ -304,3 +363,25 @@ if save:
         for line in lines:
             file.write(line + '\n')
         file.close()
+    # plot graphics for type0/1 active/arrested and D
+    fig, ax = plt.subplots()
+    ax.plot(time, D_list)
+    ax.set(xlabel='time (epochs)', ylabel="agent's percieved D",title='Discrimination factor')
+    ax.grid()
+    fig.savefig(name_to_save+'Discrimination.png')
+
+    fig, ax = plt.subplots()
+    ax.plot(time, arrested_list,label = 'Total number of arrested agents')
+    ax.plot(time, type_1_arrested_list, label = 'Total number of type 1 arrested agents')
+    ax.plot(time, type_0_arrested_list, label = 'Total number of type 0 arrested agents')
+    ax.set(xlabel='time (epochs)', ylabel="number of agents",title='Arrested agents')
+    ax.grid()
+    fig.savefig(name_to_save+'Arrests.png')
+
+    fig, ax = plt.subplots()
+    ax.plot(time, active_list,label = 'Total number of active agents')
+    ax.plot(time, type_1_active_list, label = 'Total number of type 1 active agents')
+    ax.plot(time, type_0_active_list, label = 'Total number of type 0 active agents')
+    ax.set(xlabel='time (epochs)', ylabel="number of agents",title='Active agents')
+    ax.grid()
+    fig.savefig(name_to_save+'Active.png')

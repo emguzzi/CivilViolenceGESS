@@ -8,25 +8,28 @@ import os
 import pandas as pd
 import matplotlib as mpl
 from tqdm import tqdm, trange
+
 # ============================================
 # Global variables for the model
 # ============================================
-#type 1 --> discriminated
+
+# General
 nation_dimension = 40  # Will be a (nation_dimension,nation_dimension) matrix
-p_class_1 = 0.6  # Probability for an agent to be in class 1
 vision_agent = 7  # Agent's vision
 vision_cop = 7  # Cop's vision
-L = 0.82  # Legitimacy, must be element of [0,1], see paper
-T = 0.1  # Tres-hold of agent's activation
+L = 0.82  # Legitimacy, must be element of [0,1]
+T = 0.1  # Threshold of agent's activation
 Jmax = 15  # Maximal Jail time for type 0
-factor_Jmax1 = 2  # How many time is Jmax for type 1 bigger than for type 0
-k = 2.3  # Constant for P : estimated arrest probability
-# locations_agents_dic = {}
-# locations_cops_dic = {}
-prob_arrest_class_1 = 0.7  # Probability, given an arrest is made, that the arrested agent is
-D_const = [1,2]
+k = 2.3  # Constant for P: estimated arrest probability
 
-# of type 1
+# Model bad cops
+percentage_bad_cops = 0.2
+
+# Model two classes
+D_const = [1,2]
+prob_arrest_class_1 = 0.7  # Probability, given an arrest is made, that the arrested agent is of type 1
+factor_Jmax1 = 2  # How many time is Jmax for type 1 bigger than for type 0
+p_class_1 = 0  # Probability for an agent to be in class 1
 
 # ============================================
 # Classes and functions (see end of file for simulation)
@@ -48,6 +51,7 @@ class agent():
         self.P = 0  # Estimated arrest probability
         self.N = self.R * self.P * self.Jmax  # Agent's net risk
         self.D = 0 #Percieved discrimination
+        self.Il = 1-L
 
     def move(self):
         # Moves the agent if the agent is not in jail
@@ -125,9 +129,26 @@ class agent():
         cops_near = self.near_cops(cops)
         self.P = 1 - np.exp(-k * cops_near / active_agents_near)
 
+    def percieved_agressivity_of_cops(self, cops):
+        # Sums over cops agressivity within influence radius
+        percieved_agressivity = 0
+        for cop in cops:
+            pos = cop.position
+            if np.linalg.norm(self.position - pos, ord=np.inf) < vision_cop:
+                # If within vision count
+                percieved_agressivity += cop.agressivity
+        return percieved_agressivity
+
+    def updateIl(self, cops):
+        self.Il=self.Il*np.exp(self.percieved_agressivity_of_cops(cops))
+
     def updateN(self):
         # Update net risk, see paper
         self.N = self.R * self.P * self.Jmax
+
+    def updateG(self):
+        # Update net risk, see paper
+        self.G = self.Il*self.H
 
     def updateD(self,agents):
         #update the discrimination factor D
@@ -140,6 +161,8 @@ class agent():
         self.move()
         self.updateP(agent, cops)
         self.updateN()
+        self.updateIl(cops)
+        self.updateG()
         self.updateD(agent)
         self.update_status(arrest=False)
         return self
@@ -150,6 +173,7 @@ class cop():
         self.nr = nr  # Identifier
         self.vision_cop = vision_cop
         self.position = np.random.randint(0, nation_dimension, (2))  # Assigns randomly initial position
+        self.agressivity = random.choices([1, -0.1],[percentage_bad_cops, 1-percentage_bad_cops])[0]
 
     def move(self):
         # Moves the cop within vision
@@ -157,17 +181,6 @@ class cop():
         self.position = self.position + shift
         self.position[0] = max(min(self.position[0], nation_dimension - 1), 0)  # Do not exit matrix
         self.position[1] = max(min(self.position[1], nation_dimension - 1), 0)  # Do not exit matrix
-
-    # def near_agents(self, agents):
-    #     # Compute nume
-    #     near_agents = 0
-    #     for agent in agents:
-    #         if agent.status == 2:
-    #             continue
-    #         pos = agent.position
-    #         if np.linalg.norm(self.position - pos, ord=np.inf) < self.vision_cop:
-    #             near_agents += 1
-    #     return near_agents
 
     def update_agent_status(self, agents):
         # Arrests randomly (with bias based on type) an agent within vision
@@ -218,7 +231,7 @@ cops = [cop(n) for n in range(n_cops)]  # Generate the cops
 
 save = True            # Set to True if want to save the data
 interactive = True      # If true computes the html slider stuff
-show_plot = False
+show_plot = True
 
 # ============================================
 # Simulation computation

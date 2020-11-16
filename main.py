@@ -29,7 +29,7 @@ percentage_bad_cops = 0.2
 D_const = [1,2]
 prob_arrest_class_1 = 0.7  # Probability, given an arrest is made, that the arrested agent is of type 1
 factor_Jmax1 = 2  # How many time is Jmax for type 1 bigger than for type 0
-p_class_1 = 0  # Probability for an agent to be in class 1
+p_class_1 = 0.6  # Probability for an agent to be in class 1
 
 # ============================================
 # Classes and functions (see end of file for simulation)

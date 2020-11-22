@@ -82,6 +82,7 @@ class Agent():
             new_position = random.choice(possible_positions)
             positions[new_position[0]][new_position[1]] = positions[old_position[0]][old_position[1]]
             positions[old_position[0]][old_position[1]] = None
+            self.position = new_position
 
     def updateIl(self):
         self.Il=self.Il*np.exp(self.percieved_agressivity_of_cops())

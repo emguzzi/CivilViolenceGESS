@@ -13,19 +13,42 @@ from tqdm import tqdm, trange
 # Global variables for the model
 # ============================================
 
-nation_dimension = 10
-vision = 3
-L = 0.82
-T = 0.1
-Jmax = 15
-k = 2.3
-percentage_bad_cops = 0.2
-p_class_1 = 0
-factor_Jmax1 = 1
+model = 2
+
+nation_dimension = 40   # defines size of matrix (nation_dimension * nation_dimension)
+vision = 2              # vision of each agent / cop
+L = 0.82                # Legitimacy
+T = 0.1                 # Threshold for agent's activation
+Jmax = 15               # max jail time
+k = 2.3                 # constant for making P reasonable
+
+if model == 1:
+    D_const = [1,2]                 # constant for calculating discrimination
+    prob_arrest_class_1 = 0.7       # probability for type 1 to be arrested
+    factor_Jmax1 = 2                # factor for the max jail time of type 1
+    p_class_1 = 0.6                 # percentage of agents for type 1
+    percentage_bad_cops = 0         # percentage of bad cops
+elif model == 2:
+    D_const = [0,0]
+    prob_arrest_class_1 = 0
+    factor_Jmax1 = 1
+    p_class_1 = 0
+    percentage_bad_cops = 0.1
+
+# ============================================
+# Simulation data --> Do the tuning here
+# ============================================
+p_agents = 0.7  # Number of considerate agents
+p_cops = 0.04  # Number of considerate cops
+tfin = 200 # Final time, i.e. number of time steps to consider
+
+save = False            # Set to True if want to save the data
+interactive = True      # If true computes the html slider stuff
+show_plot = False
 
 class Agent():
-    def __init__(self, nr, position, L, Jmax, p_class_1):
-        self.nr = nr
+    # Initialization of new agent. For the meaning of the variables, check the paper
+    def __init__(self, position, L, Jmax, p_class_1):
         self.position = position
         self.type = np.random.choice(2, size=1, p=[1 - p_class_1, p_class_1])[0]
         self.Jmax = Jmax + self.type * Jmax * (factor_Jmax1 - 1)
@@ -35,9 +58,11 @@ class Agent():
         self.R = np.random.uniform(0, 1)
         self.J = 0
         self.P = 0
-        self.N = self.R * self.P * self.Jmax
+        self.N = self.R * self.P
+        self.D = 0
         self.Il = 1-L
 
+    # updates status -> active / not active / jail
     def update_status(self):
         if self.status == 2 and self.J > 0:
             self.J = self.J - 1
@@ -48,33 +73,38 @@ class Agent():
         else:
             self.status = 0
 
+    # calculate near active agents
     def active_near_agents(self):
         near_agents = 0
-        all_near = get_nearby_agents(self.position[0], self.position[1])
+        all_near = get_nearby_agents(self.position[0], self.position[1], vision)
         for agnt in all_near:
             if isinstance(agnt, Agent):
                near_agents += 1
         return near_agents
 
+    # find near cops
     def near_cops(self):
         near_cops = 0
-        all_near = get_nearby_agents(self.position[0], self.position[1])
+        all_near = get_nearby_agents(self.position[0], self.position[1], vision)
         for agent in all_near:
             if isinstance(agent, Cop):
                 near_cops += 1
         return near_cops
 
+    # calculate arrest probability
     def updateP(self):
         active_agents_near = self.active_near_agents()
         cops_near = self.near_cops()
-        self.P = 1 - np.exp(-k * cops_near / min(1.0,active_agents_near))
+        self.P = 1 - np.exp(-k * cops_near / max(1.0,active_agents_near))
 
-    def percieved_agressivity_of_cops(self):
-        percieved_agressivity = 0
-        for cop in [cop for cop in get_nearby_agents(self.position[0], self.position[1]) if isinstance(cop, Cop)]:
-            percieved_agressivity += cop.agressivity
-        return percieved_agressivity
- 
+    # calculate overall aggressivity of near cops
+    def percieved_aggressivity_of_cops(self):
+        percieved_aggressivity = 0
+        for cop in [cop for cop in get_nearby_agents(self.position[0], self.position[1], vision) if isinstance(cop, Cop)]:
+            percieved_aggressivity += cop.aggressivity
+        return percieved_aggressivity
+
+    # move to new empty field around the current field
     def move(self):
         possible_positions = get_empty_field(self.position[0], self.position[1])
         old_position = self.position
@@ -84,8 +114,22 @@ class Agent():
             positions[old_position[0]][old_position[1]] = None
             self.position = new_position
 
+    # calculate the arrested ratio
+    def compute_arrested_ratio(self, range):
+        tot_arrested = 0
+        type_1_arrested = 0
+        for agent in [agent for agent in get_nearby_agents(self.position[0], self.position[1], range) if isinstance(agent, Agent)]:
+            if agent.status == 2:
+                tot_arrested += 1
+                if agent.type == 1:
+                    type_1_arrested += 1
+        if tot_arrested == 0:
+            return 0.5
+        else:
+            return type_1_arrested / tot_arrested
+
     def updateIl(self):
-        self.Il=self.Il*np.exp(self.percieved_agressivity_of_cops())
+        self.Il=self.Il*np.exp(self.percieved_aggressivity_of_cops())
 
     def updateN(self):
         self.N = self.R * self.P
@@ -93,26 +137,35 @@ class Agent():
     def updateG(self):
         self.G = self.Il*self.H
 
+    def updateD(self):
+        radius = 40
+        ratio = self.compute_arrested_ratio(radius)
+        self.D = D_const[self.type]*abs(0.5 - ratio)
+
     def arrest(self):
         self.J = np.random.randint(1, Jmax)
         self.status = 2
 
     def time_step(self):
         if self.status != 2:
+            self.updateP()
             self.updateN()
-            self.updateIl()
             self.updateG()
-            self.update_status()
+            self.updateD()
             self.move()
+            if model == 2:
+                self.updateIl()
+        self.update_status()
         return self
 
 
 class Cop():
-    def __init__(self, nr, position):
-        self.nr = nr
+    # initialize new element of cop
+    def __init__(self, position):
         self.position = position
-        self.agressivity = random.choices([1, -0.1],[percentage_bad_cops, 1-percentage_bad_cops])[0]
+        self.aggressivity = random.choices([1, -0.1],[percentage_bad_cops, 1-percentage_bad_cops])[0]
 
+    # move to empty field nearby
     def move(self):
         possible_positions = get_empty_field(self.position[0], self.position[1])
         old_position = self.position
@@ -122,10 +175,11 @@ class Cop():
             positions[old_position[0]][old_position[1]] = None
             self.position = new_position
 
+    # arrest an active agent
     def update_agent_status(self):
         near_active_agents_0 = []  # List type 0 agents within vision
         near_active_agents_1 = []  # List type 1 agents within vision
-        nearby_agents_and_cops = get_nearby_agents(self.position[0], self.position[1])
+        nearby_agents_and_cops = get_nearby_agents(self.position[0], self.position[1], vision)
         nearby_agents = [agnt for agnt in nearby_agents_and_cops if isinstance(agnt, Agent)]
 
         for agnt in nearby_agents:
@@ -134,6 +188,7 @@ class Cop():
                     near_active_agents_0.append(agnt)
                 else:
                     near_active_agents_1.append(agnt)
+
         if len(near_active_agents_0) > 0:
             if len(near_active_agents_1) > 0:
                 choice01 = np.random.choice(2, 1, p=[1 - prob_arrest_class_1, prob_arrest_class_1])[0]
@@ -150,24 +205,10 @@ class Cop():
             # No type 0 vut type 1 in vision, arrest randomly type 1
             random.choice(near_active_agents_1).arrest()
 
-    # No one in vision, no arrest
-
     def time_step(self):
         self.move()
-        self.update_agent_status()  # Do arrest if possible
+        self.update_agent_status()
         return self
-
-
-# ============================================
-# Simulation data --> Do the tuning here
-# ============================================
-p_agents = 0.5  # Number of considerate agents
-p_cops = 0.01  # Number of considerate cops
-tfin = 200 # Final time, i.e. number of time steps to consider
-
-save = False            # Set to True if want to save the data
-interactive = True      # If true computes the html slider stuff
-show_plot = False
 
 # ============================================
 # Simulation computation
@@ -175,7 +216,7 @@ show_plot = False
 
 now = datetime.now()    # Gets date and time info
 dt_string = now.strftime("%d_%m_%Y_%H_%M")
-name_to_save = 'simulation_' + dt_string    # All will be save with this name + counter + extensions
+name_to_save = 'simulation_' + dt_string
 if save:
     if not os.path.isdir(name_to_save):
         # If save and directory does not exists, create one
@@ -190,21 +231,21 @@ for i in range(nation_dimension):
     for j in range(nation_dimension):
         rand = random.random()
         if rand < p_agents:
-            agent_instance = Agent(i*j, [i, j], L, Jmax, p_class_1)
+            agent_instance = Agent([i, j], L, Jmax, p_class_1)
             line.append(agent_instance)
             agents.append(agent_instance)
         elif rand < (p_agents + p_cops):
-            cop_instance = Cop(i*j, [i, j])
+            cop_instance = Cop([i, j])
             line.append(cop_instance)
             cops.append(cop_instance)
         else:
             line.append(None)
     positions.append(line)
 
-def get_nearby_agents(x, y):
+def get_nearby_agents(x, y, local_vision):
     nearby_agents = []
-    for i in range(max(x - vision, 0), min(x + vision, nation_dimension)):
-        for j in range(max(y - vision, 0), min(y + vision, nation_dimension)):
+    for i in range(max(x - local_vision, 0), min(x + local_vision, nation_dimension)):
+        for j in range(max(y - local_vision, 0), min(y + local_vision, nation_dimension)):
             if i is not x or j is not y:
                 if positions[i][j] is not None:
                     nearby_agents.append(positions[i][j])
@@ -219,7 +260,7 @@ def get_empty_field(x,y):
     return empty_fields
  
 
-color_name_list = ["white", "green", "red", "darkorange", "lime", "fuchsia", "goldenrod", "blue"]
+color_name_list = ["white", "green", "red", "darkorange", "lime", "fuchsia", "goldenrod", "blue", "darkblue"]
 time = range(tfin)
 D_list = [0]*tfin
 arrested_list = [0]*tfin
@@ -256,9 +297,12 @@ for t in trange(tfin):
             if element is None:
                line.append(-1)
             elif isinstance(element, Cop):
-               line.append(6)
+               if element.aggressivity < 0:
+                   line.append(6)
+               else:
+                   line.append(7)
             elif isinstance(element, Agent):
-               line.append(element.status)
+               line.append(element.status + 3*element.type)
                if element.status == 2:
                    arrested = arrested + 1
                    if element.type == 1:

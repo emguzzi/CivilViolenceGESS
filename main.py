@@ -372,29 +372,32 @@ if save:
              'n_cops' + ': ' + str(n_cops),
              'tfin' + ': ' + str(tfin)]
 
-    with open(name_to_save+'_par.txt','w') as file:
+    with open(name_to_save + '_par.txt', 'w') as file:
         for line in lines:
             file.write(line + '\n')
         file.close()
     # plot graphics for type0/1 active/arrested and D
     fig, ax = plt.subplots()
     ax.plot(time, D_list)
-    ax.set(xlabel='time (epochs)', ylabel="agent's percieved D",title='Discrimination factor')
+    ax.set(xlabel='time (epochs)', ylabel="agent's percieved D", title='Discrimination factor')
     ax.grid()
-    fig.savefig(name_to_save+'Discrimination.png')
+    ax.legend(['D factor'])
+    fig.savefig(name_to_save + 'Discrimination.png')
 
     fig, ax = plt.subplots()
-    ax.plot(time, arrested_list,label = 'Total number of arrested agents')
-    ax.plot(time, type_1_arrested_list, label = 'Total number of type 1 arrested agents')
-    ax.plot(time, type_0_arrested_list, label = 'Total number of type 0 arrested agents')
-    ax.set(xlabel='time (epochs)', ylabel="number of agents",title='Arrested agents')
+    ax.plot(time, arrested_list, label='Total number of arrested agents')
+    ax.plot(time, type_1_arrested_list, label='Total number of type 1 arrested agents')
+    ax.plot(time, type_0_arrested_list, label='Total number of type 0 arrested agents')
+    ax.set(xlabel='time (epochs)', ylabel="number of agents", title='Arrested agents')
     ax.grid()
-    fig.savefig(name_to_save+'Arrests.png')
+    ax.legend(['total arrested','type 1 arrested', 'type 0 arrested'])
+    fig.savefig(name_to_save + 'Arrests.png')
 
     fig, ax = plt.subplots()
-    ax.plot(time, active_list,label = 'Total number of active agents')
-    ax.plot(time, type_1_active_list, label = 'Total number of type 1 active agents')
-    ax.plot(time, type_0_active_list, label = 'Total number of type 0 active agents')
-    ax.set(xlabel='time (epochs)', ylabel="number of agents",title='Active agents')
+    ax.plot(time, active_list, label='Total number of active agents')
+    ax.plot(time, type_1_active_list, label='Total number of type 1 active agents')
+    ax.plot(time, type_0_active_list, label='Total number of type 0 active agents')
+    ax.set(xlabel='time (epochs)', ylabel="number of agents", title='Active agents')
     ax.grid()
-    fig.savefig(name_to_save+'Active.png')
+    ax.legend(['total active', 'type 1 active', 'type 0 active'])
+    fig.savefig(name_to_save + 'Active.png')

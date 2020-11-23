@@ -76,7 +76,7 @@ class agent():
             # Is arrested and assigned a Jail time, see paper
             self.status = 2
             self.J = np.random.randint(1, Jmax)
-        elif self.G - (self.N-self.D) > T:
+        elif self.G - (self.N-D_const[self.type]*self.D) > T:
             # Get's active, see paper
             self.status = 1
         else:
@@ -154,7 +154,7 @@ class agent():
         #update the discrimination factor D
         radius = 40 #set the radius smaller to let D more local, let it to 40 to keep D global
         ratio = self.compute_arrested_ratio(agents,radius)
-        self.D = D_const[self.type]*abs(0.5-ratio)
+        self.D = abs(0.5-ratio)
 
     def time_step(self, agent, cops):
         # Comptes one time iteration for the given agent

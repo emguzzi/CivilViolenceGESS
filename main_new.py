@@ -63,6 +63,7 @@ class agent():
         self.position[0] = max(min(self.position[0], nation_dimension - 1), 0)  # Do not leave the matrix
         self.position[1] = max(min(self.position[1], nation_dimension - 1), 0)  # Do not leave the matrix
         # locations_agents_dic[self.nr] = self.position
+        return self
 
     def update_status(self, arrest=False):
         # Updates the agent's status
@@ -99,16 +100,15 @@ class agent():
             near_agents += 1
         return near_agents
 
-    def compute_arrested_ratio(self, agents, radius):
+    def compute_arrested_ratio(self, list_arrested_vision):
         # compute the ratio type_1 arrested agents over total arrests
         tot_arrested = 0
         type_1_arrested = 0
-        for agent in agents:
-            pos = agent.position
-            if (np.linalg.norm(self.position - pos, ord=np.inf) < radius) and (agent.status == 2):
-                tot_arrested = tot_arrested + 1
-                if agent.type == 1:
-                    type_1_arrested = type_1_arrested + 1
+        arrested_near = list_arrested_vision[(self.position[0],self.position[1])]
+        for arrested_agent in arrested_near:
+            if agent.type == 1:
+                type_1_arrested += 1
+            tot_arrested += 1
         if tot_arrested == 0:
             ratio = p_class_1
         else:
@@ -125,10 +125,14 @@ class agent():
                 near_cops += 1
         return near_cops
 
-    def updateP(self, agents, cops):
+    def updateP_new(self, list_agent_near_vision_agent, list_cop_near_vision_agent):
         # Updates estimated arrest probability, see paper
-        active_agents_near = self.active_near_agents(agents)
-        cops_near = self.near_cops(cops)
+        active_agents_near = 1
+        # print(len(list_agent_near_vision_agent[self.position[0]][self.position[1]]))
+        for ag in list_agent_near_vision_agent[(self.position[0],self.position[1])]:
+            if ag.status == 2:
+                active_agents_near += 1
+        cops_near = len(list_cop_near_vision_agent[(self.position[0],self.position[1])])
         self.P = 1 - np.exp(-k * cops_near / active_agents_near)
 
     def percieved_agressivity_of_cops(self, cops):
@@ -139,6 +143,103 @@ class agent():
             if np.linalg.norm(self.position - pos, ord=np.inf) < vision_cop:
                 # If within vision count
                 percieved_agressivity += cop.agressivity
+        return 0  # percieved_agressivity
+
+    def updateIl(self, cops):
+        self.Il = self.Il * np.exp(self.percieved_agressivity_of_cops(cops))
+
+    def updateN(self):
+        # Update net risk, see paper
+        self.N = self.R * self.P * self.Jmax
+
+    def updateG(self):
+        # Update net risk, see paper
+        self.G = self.Il * self.H
+
+    def updateD(self, agents):
+        # update the discrimination factor D
+        # radius = 40  # set the radius smaller to let D more local, let it to 40 to keep D global
+        ratio = self.compute_arrested_ratio(list_arrested_vision)
+        self.D = abs(p_class_1 - ratio)
+
+    def time_step(self, agent, cops):
+        # Comptes one time iteration for the given agent
+        self.move()
+        self.updateP(agent, cops)
+        self.updateN()
+        self.updateIl(cops)
+        self.updateG()
+        self.updateD(agent)
+        self.update_status(arrest=False)
+        return self
+
+    def time_step_no_move(self, agents, list_agent_near_vision_agent, list_cop_near_vision_agent, list_arrested_vision):
+        # Comptes one time iteration for the given agent
+        self.updateP_new(list_agent_near_vision_agent, list_cop_near_vision_agent)
+        self.updateN()
+        # self.updateIl(list_cop_near_vision_agent)
+        self.updateG()
+        self.updateD(list_arrested_vision)
+        self.update_status(arrest=False)
+        return self
+
+
+class cop():
+    def __init__(self, nr):
+        self.nr = nr  # Identifier
+        self.vision_cop = vision_cop
+        self.position = np.random.randint(0, nation_dimension, (2))  # Assigns randomly initial position
+        self.agressivity = 0  # random.choices([1, -0.1], [percentage_bad_cops, 1 - percentage_bad_cops])[0]
+
+    def move(self):
+        # Moves the cop within vision
+        shift = np.random.randint(-self.vision_cop, self.vision_cop + 1, (2))
+        self.position = self.position + shift
+        self.position[0] = max(min(self.position[0], nation_dimension - 1), 0)  # Do not exit matrix
+        self.position[1] = max(min(self.position[1], nation_dimension - 1), 0)  # Do not exit matrix
+        return self
+
+    def update_agent_status(self, agents):
+        # Arrests randomly (with bias based on type) an agent within vision
+        near_active_agents_0 = []  # List type 0 agents within vision
+        near_active_agents_1 = []  # List type 1 agents within vision
+        for agent in agents:
+            pos = agent.position
+            if np.linalg.norm(self.position - pos, ord=np.inf) < self.vision_cop:
+                if agent.status == 1:
+                    if agent.type == 0:
+                        near_active_agents_0.append(agent)
+                    else:
+                        near_active_agents_1.append(agent)
+        if len(near_active_agents_0) > 0:
+            if len(near_active_agents_1) > 0:
+                # Both types in vision, compute now which type to arrest
+                choice01 = np.random.choice(2, 1, p=[1 - prob_arrest_class_1, prob_arrest_class_1])[0]
+                if choice01 == 0:
+                    # Arrest randomly in type 0
+                    random.choice(near_active_agents_0).update_status(arrest=True)
+                else:
+                    # Arrest randomly in type 1
+                    random.choice(near_active_agents_1).update_status(arrest=True)
+            else:
+                # No type 1 but type 0 in vision, arrest randomly type 0
+                random.choice(near_active_agents_0).update_status(arrest=True)
+        elif len(near_active_agents_1) > 0:
+            # No type 0 vut type 1 in vision, arrest randomly type 1
+            random.choice(near_active_agents_1).update_status(arrest=True)
+
+    # No one in vision, no arrest
+
+    def time_step(self, agents):
+        # Compute one time iteration for cops
+        self.move()
+        self.update_agent_status(agents)  # Do arrest if possible
+        return self
+
+    def time_step_no_move(self, agents):
+        # Compute one time iteration for cops
+        self.update_agent_status(agents)  # Do arrest if possible
+        return self                percieved_agressivity += cop.agressivity
         return percieved_agressivity
 
     def updateIl(self, cops):
@@ -280,6 +381,16 @@ for val_round in range(validation_times):
     type_1_active_list = [0] * len(range(tfin))
     type_0_active_list = [0] * len(range(tfin))
     for t in trange(tfin):
+        list_agent_near_vision_agent = {}
+        list_agent_near_vision_cop = {}
+        list_cop_near_vision_agent = {}
+        list_arrested_vision = {}
+        for i in range(0, nation_dimension):
+            for j in range(0, nation_dimension):
+                list_agent_near_vision_agent[(i, j)] = []
+                list_agent_near_vision_cop[(i, j)] = []
+                list_cop_near_vision_agent[(i, j)] = []
+                list_arrested_vision[(i, j)] = []
         arrested = 0
         type_1_arrested = 0
         type_0_arrested = 0
@@ -298,12 +409,12 @@ for val_round in range(validation_times):
         # * 4: active agent type 1 here
         # * 5: agent in jail type 1 here
         # * 6: cop here
-        if t == 10:
-            tot_unjustified_arrest = 0
-            for agent in agents:
-                if agent.type == 1 and agent.status != 2 and tot_unjustified_arrest <= 80:
-                    agent.status = 2
-                    tot_unjustified_arrest = tot_unjustified_arrest + 1
+        # if t == 10:
+        #     tot_unjustified_arrest = 0
+        #     for agent in agents:
+        #         if agent.type == 1 and agent.status != 2 and tot_unjustified_arrest <= 80:
+        #             agent.status = 2
+        #             tot_unjustified_arrest = tot_unjustified_arrest + 1
         for agent in agents:
             pos = agent.position
             positions[
@@ -341,8 +452,37 @@ for val_round in range(validation_times):
                 plt.show()
 
         # Compute now one time steps for each cop and each agent
-        cops = [cop.time_step(agents) for cop in cops]
-        agents = [ag.time_step(agents, cops) for ag in agents]
+        cops = [cop.move() for cop in cops]
+        agents = [ag.move() for ag in agents]
+        for agent in agents:
+            for i in range(max(0, agent.position[0] - vision_agent),
+                           min(nation_dimension, agent.position[0] + vision_agent + 1)):
+                for j in range(max(0, agent.position[1] - vision_agent),
+                               min(nation_dimension, agent.position[1] + vision_agent + 1)):
+                    list_agent_near_vision_agent[(i,j)].append(agent)
+        for agent in agents:
+            for i in range(max(0, agent.position[0] - vision_cop),
+                           min(nation_dimension, agent.position[0] + vision_cop + 1)):
+                for j in range(max(0, agent.position[1] - vision_cop),
+                               min(nation_dimension, agent.position[1] + vision_cop + 1)):
+                    list_agent_near_vision_cop[(i,j)].append(agent)
+        for cop in cops:
+            for i in range(max(0, cop.position[0] - vision_agent),
+                           min(nation_dimension, cop.position[0] + vision_agent + 1)):
+                for j in range(max(0, cop.position[1] - vision_agent),
+                               min(nation_dimension, cop.position[1] + vision_agent + 1)):
+                    list_cop_near_vision_agent[(i,j)].append(agent)
+        for agent in agents:
+            if agent.status == 2:
+                for i in range(max(0, cop.position[0] - 40),
+                               min(nation_dimension, cop.position[0] + 40 + 1)):
+                    for j in range(max(0, cop.position[1] - 40),
+                                   min(nation_dimension, cop.position[1] + 40 + 1)):
+                        list_arrested_vision[(i,j)].append(agent)
+        cops = [cop.time_step_no_move(agents) for cop in cops]
+        agents = [
+            ag.time_step_no_move(agents, list_agent_near_vision_agent, list_cop_near_vision_agent, list_arrested_vision)
+            for ag in agents]
         D_list[t] = D
         arrested_list[t] = arrested
         type_1_arrested_list[t] = type_1_arrested

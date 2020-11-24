@@ -26,9 +26,9 @@ k = 2.3  # Constant for P: estimated arrest probability
 percentage_bad_cops = 0
 
 # Model two classes
-D_const = [1, 1]  # put like 20 here!
+D_const = [0.5, 1]  # put like 20 here!
 p_class_1 = 0.2  # Probability for an agent to be in class 1
-prob_arrest_class_1 = 0.2  # Probability, given an arrest is made, that the arrested agent is of type 1
+prob_arrest_class_1 = 0.35  # Probability, given an arrest is made, that the arrested agent is of type 1
 factor_Jmax1 = 1.0  # How many time is Jmax for type 1 bigger than for type 0
 
 
@@ -225,16 +225,16 @@ class cop():
 # ============================================
 # Simulation data --> Do the tuning here
 # ============================================
-validation_times = 3
+validation_times = 1
 n_agents = int(0.7 * nation_dimension ** 2)  # Number of considerate agents
 n_cops = int(0.04 * nation_dimension ** 2)  # Number of considerate cops
-tfin = 40  # Final time, i.e. number of time steps to consider
+tfin = 20  # Final time, i.e. number of time steps to consider
 agents = [agent(n, L, Jmax, p_class_1) for n in range(n_agents)]  # Generate the agents
 cops = [cop(n) for n in range(n_cops)]  # Generate the cops
 
 save = True  # Set to True if want to save the data
 interactive = True  # If true computes the html slider stuff
-show_plot = True
+show_plot = False
 
 # ============================================
 # Simulation computation
@@ -298,6 +298,12 @@ for val_round in range(validation_times):
         # * 4: active agent type 1 here
         # * 5: agent in jail type 1 here
         # * 6: cop here
+        if t == 10:
+            tot_unjustified_arrest = 0
+            for agent in agents:
+                if agent.type == 1 and agent.status != 2 and tot_unjustified_arrest <= 80:
+                    agent.status = 2
+                    tot_unjustified_arrest = tot_unjustified_arrest + 1
         for agent in agents:
             pos = agent.position
             positions[
@@ -455,13 +461,18 @@ if save:
     ax.legend(['total arrested', 'type 1 arrested', 'type 0 arrested'])
     fig.savefig(name_to_save + 'Mean_Arrests.png')
 
-    fig, ax = plt.subplots()
-    ax.plot(time, active_list, label='Total number of active agents')
-    ax.plot(time, type_1_active_list, label='Total number of type 1 active agents')
-    ax.plot(time, type_0_active_list, label='Total number of type 0 active agents')
-    ax.set(xlabel='time (epochs)', ylabel="number of agents", title='Active agents')
-    ax.grid()
-    ax.legend(['total active', 'type 1 active', 'type 0 active'])
+    fig, ax = plt.subplots(2)
+    ax[0].plot(time, active_list, label='Total number of active agents')
+    ax[0].plot(time, type_1_active_list, label='Total number of type 1 active agents')
+    ax[0].plot(time, type_0_active_list, label='Total number of type 0 active agents')
+    ax[0].set(xlabel='time (epochs)', ylabel="number of agents", title='Active agents')
+    ax[0].grid()
+    ax[0].legend(['total active', 'type 1 active', 'type 0 active'])
+
+    ax[1].plot(time,D_list,label = 'Discrimination factor')
+    ax[1].set(xlabel='time (epochs)', ylabel="number of agents")
+    ax[1].grid()
+    ax[1].legend(['Discrimation factor'])
     fig.savefig(name_to_save + 'Active.png')
 
     fig, ax = plt.subplots()

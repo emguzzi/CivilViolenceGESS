@@ -26,10 +26,10 @@ k = 2.3  # Constant for P: estimated arrest probability
 percentage_bad_cops = 0
 
 # Model two classes
-D_const = [0.5, 1]  # put like 20 here!
+D_const = [1, 1]  # put like 20 here!
 p_class_1 = 0.2  # Probability for an agent to be in class 1
-prob_arrest_class_1 = 0.35  # Probability, given an arrest is made, that the arrested agent is of type 1
-factor_Jmax1 = 1.0  # How many time is Jmax for type 1 bigger than for type 0
+prob_arrest_class_1 = 0.8  # Probability, given an arrest is made, that the arrested agent is of type 1
+factor_Jmax1 = 1.5  # How many time is Jmax for type 1 bigger than for type 0
 
 
 # ============================================
@@ -53,7 +53,7 @@ class agent():
         self.N = self.R * self.P * self.Jmax  # Agent's net risk
         self.D = 0  # Percieved discrimination
         self.Il = 1 - L
-
+        self.arrested_ratio = p_class_1
     def move(self):
         # Moves the agent if the agent is not in jail
         shift = np.random.randint(-self.vision_agent, self.vision_agent + 1, (2))
@@ -106,14 +106,15 @@ class agent():
         type_1_arrested = 0
         arrested_near = list_arrested_vision[(self.position[0],self.position[1])]
         for arrested_agent in arrested_near:
-            if agent.type == 1:
+            if arrested_agent.type == 1:
                 type_1_arrested += 1
             tot_arrested += 1
         if tot_arrested == 0:
             ratio = p_class_1
         else:
             ratio = type_1_arrested / tot_arrested
-        return ratio
+        self.arrested_ratio = ratio
+        return ratio, tot_arrested
 
     def near_cops(self, cops):
         # Counts cops within vision
@@ -156,11 +157,14 @@ class agent():
         # Update net risk, see paper
         self.G = self.Il * self.H
 
-    def updateD(self, agents):
+    def updateD(self, list_arrested_vision):
         # update the discrimination factor D
         # radius = 40  # set the radius smaller to let D more local, let it to 40 to keep D global
-        ratio = self.compute_arrested_ratio(list_arrested_vision)
-        self.D = abs(p_class_1 - ratio)
+        ratio, tot_arrested = self.compute_arrested_ratio(list_arrested_vision)
+        if tot_arrested < 10:
+            self.D = 0.3*abs(p_class_1 - ratio)
+        else:
+            self.D = abs(p_class_1 - ratio)
 
     def time_step(self, agent, cops):
         # Comptes one time iteration for the given agent
@@ -246,14 +250,14 @@ class cop():
 # Simulation data --> Do the tuning here
 # ============================================
 validation_times = 1
-n_agents = int(0.7 * nation_dimension ** 2)  # Number of considerate agents
-n_cops = int(0.04 * nation_dimension ** 2)  # Number of considerate cops
-tfin = 20  # Final time, i.e. number of time steps to consider
+n_agents = 1120  # Number of considerate agents
+n_cops = 64  # Number of considerate cops
+tfin = 100  # Final time, i.e. number of time steps to consider
 agents = [agent(n, L, Jmax, p_class_1) for n in range(n_agents)]  # Generate the agents
 cops = [cop(n) for n in range(n_cops)]  # Generate the cops
 
 save = True  # Set to True if want to save the data
-interactive = True  # If true computes the html slider stuff
+interactive = False  # If true computes the html slider stuff
 show_plot = False
 
 # ============================================
@@ -299,6 +303,7 @@ for val_round in range(validation_times):
     active_list = [0] * len(range(tfin))
     type_1_active_list = [0] * len(range(tfin))
     type_0_active_list = [0] * len(range(tfin))
+    ratio_list = [0]*len(range(tfin))
     for t in trange(tfin):
         list_agent_near_vision_agent = {}
         list_agent_near_vision_cop = {}
@@ -317,6 +322,7 @@ for val_round in range(validation_times):
         type_1_active = 0
         type_0_active = 0
         D = 0
+        ratio = 0
         # Does the t-th time iteration
         positions = np.zeros((nation_dimension, nation_dimension)) - 1  # Initialisation of the matrix
         # Values of positions are:
@@ -328,12 +334,17 @@ for val_round in range(validation_times):
         # * 4: active agent type 1 here
         # * 5: agent in jail type 1 here
         # * 6: cop here
-        # if t == 10:
-        #     tot_unjustified_arrest = 0
-        #     for agent in agents:
-        #         if agent.type == 1 and agent.status != 2 and tot_unjustified_arrest <= 80:
-        #             agent.status = 2
-        #             tot_unjustified_arrest = tot_unjustified_arrest + 1
+
+        #peak of arrests
+        #if t == 10:
+        #arrest during a longer periods of time (one also need to adjust the tor_unj_arr condition)
+        if t in range(10,20):
+           tot_unjustified_arrest = 0
+           for agent in agents:
+               if agent.type == 1 and agent.status != 2 and tot_unjustified_arrest <= 10:
+                   agent.update_status(arrest=True)
+                   tot_unjustified_arrest = tot_unjustified_arrest + 1
+
         for agent in agents:
             pos = agent.position
             positions[
@@ -352,6 +363,7 @@ for val_round in range(validation_times):
                     type_0_active = type_0_active + 1
 
         D = agent.D
+        ratio = agent.arrested_ratio
         for cop in cops:
             pos = cop.position
             positions[pos[0], pos[1]] = 6  # Updates matrix data with cops position
@@ -402,7 +414,7 @@ for val_round in range(validation_times):
         agents = [
             ag.time_step_no_move(agents, list_agent_near_vision_agent, list_cop_near_vision_agent, list_arrested_vision)
             for ag in agents]
-        D_list[t] = D
+        D_list[t] = D/D_const[agent.type]
         arrested_list[t] = arrested
         type_1_arrested_list[t] = type_1_arrested
         type_0_arrested_list[t] = type_0_arrested
@@ -417,6 +429,7 @@ for val_round in range(validation_times):
         val_active_list[val_round, t] = active
         val_type_1_active_list[val_round, t] = type_1_active
         val_type_0_active_list[val_round, t] = type_0_active
+        ratio_list[t] = ratio
 
 std_D_list, mean_D_list = np.std(val_D_list, axis=0), np.mean(val_D_list, axis=0)
 std_arrested_list, mean_arrested_list = np.std(val_arrested_list, axis=0), np.mean(val_arrested_list, axis=0)
@@ -528,10 +541,10 @@ if save:
     ax[0].grid()
     ax[0].legend(['total active', 'type 1 active', 'type 0 active'])
 
-    ax[1].plot(time,D_list,label = 'Discrimination factor')
-    ax[1].set(xlabel='time (epochs)', ylabel="number of agents")
+    ax[1].plot(time,ratio_list,label = 'Type1 arrested / Total number of arrested')
+    ax[1].set(xlabel='time (epochs)', title =  'arrested ratio')
     ax[1].grid()
-    ax[1].legend(['Discrimation factor'])
+    ax[1].legend(['ratio'])
     fig.savefig(name_to_save + 'Active.png')
 
     fig, ax = plt.subplots()
@@ -542,3 +555,12 @@ if save:
     ax.grid()
     ax.legend(['total active', 'type 1 active', 'type 0 active'])
     fig.savefig(name_to_save + 'Mean_Active.png')
+
+    fig, ax = plt.subplots(2)
+    ax[0].plot(time, D_list, label = 'Discrimination Factor')
+    ax[0].set(xlabel='time (epochs)', title='Discrimination Factor')
+    ax[0].grid()
+    ax[1].plot(time,ratio_list,label = 'Type1 arrested / Total number of arrested')
+    ax[1].set(xlabel='time (epochs)')
+    ax[1].grid()
+    fig.savefig(name_to_save+'DvsRatio.png')

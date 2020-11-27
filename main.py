@@ -16,10 +16,10 @@ from tqdm import tqdm, trange
 model = 2
 
 nation_dimension = 40   # defines size of matrix (nation_dimension * nation_dimension)
-vision = 2              # vision of each agent / cop
+vision = 5              # vision of each agent / cop
 L = 0.82                # Legitimacy
-T = 0.1                 # Threshold for agent's activation
-Jmax = 15               # max jail time
+T = 0.15                # Threshold for agent's activation
+Jmax =  15              # max jail time
 k = 2.3                 # constant for making P reasonable
 
 if model == 1:
@@ -28,21 +28,25 @@ if model == 1:
     factor_Jmax1 = 2                # factor for the max jail time of type 1
     p_class_1 = 0.6                 # percentage of agents for type 1
     percentage_bad_cops = 0         # percentage of bad cops
+    aggressivity_bad_cops = 0.0
+    aggressivity_good_cops = 0.0
 elif model == 2:
     D_const = [0,0]
     prob_arrest_class_1 = 0
     factor_Jmax1 = 1
     p_class_1 = 0
-    percentage_bad_cops = 0.1
+    percentage_bad_cops = 0.02
+    aggressivity_bad_cops = -1
+    aggressivity_good_cops = -1
 
 # ============================================
 # Simulation data --> Do the tuning here
 # ============================================
 p_agents = 0.7  # Number of considerate agents
 p_cops = 0.04  # Number of considerate cops
-tfin = 200 # Final time, i.e. number of time steps to consider
+tfin = 80 # Final time, i.e. number of time steps to consider
 
-save = False            # Set to True if want to save the data
+save = True             # Set to True if want to save the data
 interactive = True      # If true computes the html slider stuff
 show_plot = False
 
@@ -106,7 +110,7 @@ class Agent():
 
     # move to new empty field around the current field
     def move(self):
-        possible_positions = get_empty_field(self.position[0], self.position[1])
+        possible_positions = get_empty_field(self.position[0], self.position[1], vision)
         old_position = self.position
         if possible_positions:
             new_position = random.choice(possible_positions)
@@ -163,11 +167,11 @@ class Cop():
     # initialize new element of cop
     def __init__(self, position):
         self.position = position
-        self.aggressivity = random.choices([1, -0.1],[percentage_bad_cops, 1-percentage_bad_cops])[0]
+        self.aggressivity = random.choices([aggressivity_bad_cops, aggressivity_good_cops],[percentage_bad_cops, 1-percentage_bad_cops])[0]
 
     # move to empty field nearby
     def move(self):
-        possible_positions = get_empty_field(self.position[0], self.position[1])
+        possible_positions = get_empty_field(self.position[0], self.position[1], vision)
         old_position = self.position
         if possible_positions:
             new_position = random.choice(possible_positions)
@@ -251,10 +255,10 @@ def get_nearby_agents(x, y, local_vision):
                     nearby_agents.append(positions[i][j])
     return nearby_agents
 
-def get_empty_field(x,y):
+def get_empty_field(x,y,distance):
     empty_fields = []
-    for i in range(max(x-1, 0), min(x+2, nation_dimension)):
-        for j in range(max(y-1, 0), min(y+2, nation_dimension)):
+    for i in range(max(x-distance, 0), min(x+1+distance, nation_dimension)):
+        for j in range(max(y-distance, 0), min(y+1+distance, nation_dimension)):
             if positions[i][j] is None:
                     empty_fields.append([i,j])
     return empty_fields

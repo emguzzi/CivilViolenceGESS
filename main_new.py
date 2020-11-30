@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 import matplotlib.patches as mpatches
-import plotly.graph_objects as go
+#import plotly.graph_objects as go
 from datetime import datetime
 import os
 import pandas as pd
@@ -18,7 +18,7 @@ nation_dimension = 40  # Will be a (nation_dimension,nation_dimension) matrix
 vision_agent = 7  # Agent's vision
 vision_cop = 7  # Cop's vision
 L = 0.82  # Legitimacy, must be element of [0,1]
-T = 0.16  # Threshold of agent's activation
+T = 0.1  # Threshold of agent's activation
 Jmax = 15  # Maximal Jail time for type 0
 k = 2.3  # Constant for P: estimated arrest probability
 
@@ -28,7 +28,7 @@ percentage_bad_cops = 0
 # Model two classes
 D_const = [1, 1]  # put like 20 here!
 p_class_1 = 0.2  # Probability for an agent to be in class 1
-prob_arrest_class_1 = 0.8  # Probability, given an arrest is made, that the arrested agent is of type 1
+prob_arrest_class_1 = 0.6  # Probability, given an arrest is made, that the arrested agent is of type 1
 factor_Jmax1 = 1.5  # How many time is Jmax for type 1 bigger than for type 0
 
 
@@ -256,6 +256,7 @@ tfin = 100  # Final time, i.e. number of time steps to consider
 agents = [agent(n, L, Jmax, p_class_1) for n in range(n_agents)]  # Generate the agents
 cops = [cop(n) for n in range(n_cops)]  # Generate the cops
 
+
 save = True  # Set to True if want to save the data
 interactive = False  # If true computes the html slider stuff
 show_plot = False
@@ -304,6 +305,9 @@ for val_round in range(validation_times):
     type_1_active_list = [0] * len(range(tfin))
     type_0_active_list = [0] * len(range(tfin))
     ratio_list = [0]*len(range(tfin))
+    type_1_tension_list = [0]*len(range(tfin))
+    type_0_tension_list = [0]*len(range(tfin))
+    agents_tension_list = [0]*len(range(tfin))
     for t in trange(tfin):
         list_agent_near_vision_agent = {}
         list_agent_near_vision_cop = {}
@@ -323,6 +327,10 @@ for val_round in range(validation_times):
         type_0_active = 0
         D = 0
         ratio = 0
+        type_0_tension = 0
+        type_1_tension = 0
+        free_agent_0 = 0
+        free_agent_1 = 0
         # Does the t-th time iteration
         positions = np.zeros((nation_dimension, nation_dimension)) - 1  # Initialisation of the matrix
         # Values of positions are:
@@ -336,9 +344,9 @@ for val_round in range(validation_times):
         # * 6: cop here
 
         #peak of arrests
-        #if t == 10:
+        #if t == 20:
         #arrest during a longer periods of time (one also need to adjust the tor_unj_arr condition)
-        if t in range(10,20):
+        if t in range(10,21):
            tot_unjustified_arrest = 0
            for agent in agents:
                if agent.type == 1 and agent.status != 2 and tot_unjustified_arrest <= 10:
@@ -346,6 +354,12 @@ for val_round in range(validation_times):
                    tot_unjustified_arrest = tot_unjustified_arrest + 1
 
         for agent in agents:
+            if agent.type == 0 and agent.status != 2:
+                type_0_tension = type_0_tension + agent.G - (agent.N - D_const[agent.type] * agent.D)
+                free_agent_0 = free_agent_0 + 1
+            elif agent.type == 1 and agent.status != 2:
+                type_1_tension = type_1_tension + agent.G - (agent.N - D_const[agent.type] * agent.D)
+                free_agent_1 = free_agent_1 + 1
             pos = agent.position
             positions[
                 pos[0], pos[1]] = agent.status + 3 * agent.type  # Updates matrix data with agents position and status
@@ -372,12 +386,16 @@ for val_round in range(validation_times):
             im = plt.imshow(positions, cmap=mpl.colors.ListedColormap(color_name_list))
             values = [-1, 0, 1, 2, 3, 4, 5, 6]
             colors = [im.cmap(im.norm(value)) for value in values]
-            patches = [mpatches.Patch(color=colors[i], label="Level {l}".format(l=values[i])) for i in range(len(values))]
+            label_list = ['', 'quiet agent of type 0','active agent of type 0', 'arrested agent of type 0','quiet agent of type 1','active agent of type 1','arrested agent of type 1','cop']
+            patches = [mpatches.Patch(color=colors[i], label=label_list[i]) for i in range(len(values))]
             plt.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            plt.tight_layout(w_pad = 0.5)
+            plt.xticks([])
+            plt.yticks([])
             if val_round == 0:
                 if save:
                     # Saves the positions matrix
-                    plt.savefig(name_to_save + '_time_iter_nr' + str(t) + '.png')
+                    plt.savefig(name_to_save + '_time_iter_nr' + str(t) + '.eps',format = 'eps')
             if show_plot:
                 # Plots the positions matrix
                 plt.show()
@@ -421,6 +439,9 @@ for val_round in range(validation_times):
         active_list[t] = active
         type_1_active_list[t] = type_1_active
         type_0_active_list[t] = type_0_active
+        type_0_tension_list[t] = type_0_tension/free_agent_0
+        type_1_tension_list[t] = type_1_tension/free_agent_1
+        agents_tension_list[t] = (type_0_tension+type_1_tension)/(free_agent_0+free_agent_1)
 
         val_D_list[val_round, t] = D
         val_arrested_list[val_round, t] = arrested
@@ -522,7 +543,7 @@ if save:
     ax.set(xlabel='time (epochs)', ylabel="number of agents", title='Arrested agents')
     ax.grid()
     ax.legend(['total arrested', 'type 1 arrested', 'type 0 arrested'])
-    fig.savefig(name_to_save + 'Arrests.png')
+    fig.savefig(name_to_save + 'Arrests.eps',format='eps')
 
     fig, ax = plt.subplots()
     ax.errorbar(time, mean_arrested_list, yerr=std_arrested_list, label='Total number of arrested agents', capsize=5)
@@ -539,13 +560,18 @@ if save:
     ax[0].plot(time, type_0_active_list, label='Total number of type 0 active agents')
     ax[0].set(xlabel='time (epochs)', ylabel="number of agents", title='Active agents')
     ax[0].grid()
-    ax[0].legend(['total active', 'type 1 active', 'type 0 active'])
+    ax[0].legend(['total active', 'type 1 active', 'type 0 active'],loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.tight_layout(w_pad = 0.8)
 
     ax[1].plot(time,ratio_list,label = 'Type1 arrested / Total number of arrested')
+    ax[1].plot(time,[p_class_1]*len(time),label = 'Percentage of type 1 agent in nation')
     ax[1].set(xlabel='time (epochs)', title =  'arrested ratio')
     ax[1].grid()
-    ax[1].legend(['ratio'])
-    fig.savefig(name_to_save + 'Active.png')
+    ax[1].legend(['ratio','type 1 percentage'],loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.tight_layout(w_pad = 0.8)
+    fig.subplots_adjust(hspace = 0.5)
+
+    fig.savefig(name_to_save + 'Active.eps', format = 'eps')
 
     fig, ax = plt.subplots()
     ax.errorbar(time, mean_active_list, yerr=std_active_list, label='Total number of active agents', capsize=5)
@@ -564,3 +590,53 @@ if save:
     ax[1].set(xlabel='time (epochs)')
     ax[1].grid()
     fig.savefig(name_to_save+'DvsRatio.png')
+
+    fig,ax = plt.subplots(2)
+    ax[0].plot(time, active_list, label='Total number of active agents')
+    ax[0].plot(time, type_1_active_list, label='Total number of type 1 active agents')
+    ax[0].plot(time, type_0_active_list, label='Total number of type 0 active agents')
+    ax[0].set(xlabel='time (epochs)', ylabel="number of agents", title='Active agents')
+    ax[0].grid()
+    ax[0].legend(['total active', 'type 1 active', 'type 0 active'])
+
+    ax[1].plot(time, agents_tension_list, label='Mean of tension value for free agents')
+    ax[1].plot(time, type_0_tension_list, label='Mean of tension value for free type 0 agents')
+    ax[1].plot(time, type_1_tension_list, label='Mean of tension value for free type 1 agents')
+    ax[1].set(xlabel='time (epochs)', ylabel="Tension", title='Tension vs Active agent')
+    ax[1].grid()
+    ax[1].legend(['Tension', 'Type 0 Tension', 'Type 1 Tension'])
+    fig.savefig(name_to_save+'TensionvsActive.png')
+
+    fig, ax = plt.subplots(2)
+    ax[0].plot(time,active_list,label = 'Total number of active agents')
+    ax[0].set(xlabel='time (epochs)', ylabel="number of agents", title='Active agents')
+    ax[0].grid()
+    ax[0].legend(['Total active'],loc='center left', bbox_to_anchor=(1, 0.5))
+
+    plt.tight_layout(w_pad = 0.5)
+
+    ax[1].plot(time,arrested_list, label = 'Total number of arrested agents')
+    ax[1].set(xlabel='time (epochs)', ylabel="number of agents", title='Arrested agents')
+    ax[1].grid()
+    ax[1].legend(['Total arrested'],loc='center left', bbox_to_anchor=(1, 0.5))
+    fig.subplots_adjust(hspace = 0.5)
+    plt.tight_layout(w_pad = 0.5)
+
+    fig.savefig(name_to_save + 'Active&Arrested.eps',format = 'eps')
+    fig, ax = plt.subplots(2)
+    ax[0].plot(time,active_list,label = 'Total number of active agents')
+    ax[0].set(xlabel='time (epochs)', ylabel="number of agents", title='Active agents')
+    ax[0].grid()
+    ax[0].legend(['Total active'],loc='center left', bbox_to_anchor=(1, 0.5))
+
+    plt.tight_layout(w_pad = 0.5)
+
+    ax[1].plot(time,arrested_list, label = 'Total number of arrested agents')
+    ax[1].set(xlabel='time (epochs)', ylabel="number of agents", title='Arrested agents')
+    ax[1].grid()
+    ax[1].legend(['Total arrested'],loc='center left', bbox_to_anchor=(1, 0.5))
+    fig.subplots_adjust(hspace = 0.5)
+    plt.tight_layout(w_pad = 0.5)
+
+    fig.savefig(name_to_save + 'Active&Arrested.eps',format = 'eps')
+    np.save(name_to_save + 'ratio.npy',ratio_list)
